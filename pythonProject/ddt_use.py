@@ -107,35 +107,32 @@ for i in range(1,data_ncols):
     # print("ckeys:",ckeys)
     # print("values: ",values)
     data1.append(dict(zip(ckeys,values)))
-# print(data1)
+print("data1:",data1)
 # print(json.dumps(data1))
 # 组合使用，获取文件中的所有数据，
 #解包后 数据data1变为字典，元组的解包和字段的解包
 @ddt.ddt()
 class Test(unittest.TestCase):
-    # @ddt.unpack #data1解包后变成 dict字典
-    # @ddt.data(data1)
-    # def test_execl1(self,*value_):
-    #     print(value_)
+    # @ddt.file_data()
+    @ddt.unpack #data1解包后变成 dict字典
+    @ddt.data(data1)
+    def test_execl1(self,*value_):
+        # print(value_)
+        pass
 
     # @ddt.data(data)
     # def test_excel2(self,value_):
     #     # print("test_excel2的传参类型",type(value_))
     #     print("test_excel2的值",value_)
 
-    @ddt.data(data1)
-    def test_excel3(self,*value_):
-        print("test_excel3参数的类型：",type(value_))
-        print("test_excel3的值",*value_)  #value是列表类型
+    # @ddt.data(data1)
+    # def test_excel3(self,*value_):
+    #     print("test_excel3参数的类型：",type(value_))
+    #     print("test_excel3的值",*value_)  #value是列表类型
 
     # @ddt.unpack
     # @ddt.data(*data)
-    # def test_excel3(self,**value_):
+    # def test_excel4(self,**value_):  #value 是元组，([{}])  **就是字典
+    #     print("test_excel4:",type(value_))
     #     print(value_)
 
-"""
-ddt 和 excel的使用
-第二层
-思考ddt里面是不是有直接打开json文件和yaml文件的方法
-是否可以构建一个打开Excel的方式在ddt里 
-"""

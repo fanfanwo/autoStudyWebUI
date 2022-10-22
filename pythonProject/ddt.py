@@ -21,6 +21,15 @@ else:
     _have_yaml = True
 
 try:
+    import xlrd
+except ImportError:  # pragma: no cover
+    _have_xlrd = False
+else:
+    _have_xlrd = True
+    if xlrd.__version__ > "1.2.0":
+        _have_xlrd = False
+
+try:
     # Python >=3
     from collections.abc import Sequence
 except ImportError:
@@ -35,6 +44,8 @@ __version__ = '1.6.0'
 
 DATA_ATTR = '%values'              # store the data the test must run with
 FILE_ATTR = '%file_path'           # store the path to JSON file
+EXCEL_ATTR = '%file_path'
+SHEET_NAME = '%sheet_name'
 YAML_LOADER_ATTR = '%yaml_loader'  # store custom yaml loader for serialization
 UNPACK_ATTR = '%unpack'            # remember that we have to unpack values
 INDEX_LEN = '%index_len'           # store the index length of the data
@@ -180,6 +191,19 @@ def file_data(value, yaml_loader=None):
         return func
     return wrapper
 
+def excel_data(value, sheet_name=None):
+    """
+    自定义函数 进行excel文件的处理
+    """
+    def wrapper(func):
+        setattr(func, EXCEL_ATTR, value)
+        if sheet_name:
+            setattr(func, SHEET_NAME, sheet_name)
+        else:
+            setattr(func, SHEET_NAME, "Sheet1") #默认处理是Sheet1
+        return func
+    return wrapper
+
 
 def mk_test_name(name, value, index=0, index_len=5, name_fmt=TestNameFormat.DEFAULT):
     """
@@ -275,6 +299,7 @@ def process_file_data(cls, name, func, file_attr):
         return
 
     _is_yaml_file = data_file_path.endswith((".yml", ".yaml"))
+    _is_excel_file = data_file_path.endswith((".xls", ".xlsx"))
 
     # Don't have YAML but want to use YAML file.
     if _is_yaml_file and not _have_yaml:
@@ -289,16 +314,42 @@ def process_file_data(cls, name, func, file_attr):
         )
         return
 
-    with codecs.open(data_file_path, 'r', 'utf-8') as f:
-        # Load the data from YAML or JSON
-        if _is_yaml_file:
-            if hasattr(func, YAML_LOADER_ATTR):
-                yaml_loader = getattr(func, YAML_LOADER_ATTR)
-                data = yaml.load(f, Loader=yaml_loader)
+    if _is_excel_file and not _have_xlrd:
+        test_name = mk_test_name(name, "error")
+        test_docstring = """Error!"""
+        add_test(
+            cls,
+            test_name,
+            test_docstring,
+            create_error_func("%s is a EXCEL file, please install xlrd==1.2.0"),
+            None
+        )
+        return
+
+    if _is_yaml_file:
+        with codecs.open(data_file_path, 'r', 'utf-8') as f:
+            # Load the data from YAML or JSON
+            if _is_yaml_file:
+                if hasattr(func, YAML_LOADER_ATTR):
+                    yaml_loader = getattr(func, YAML_LOADER_ATTR)
+                    data = yaml.load(f, Loader=yaml_loader)
+                else:
+                    data = yaml.safe_load(f)
             else:
-                data = yaml.safe_load(f)
-        else:
-            data = json.load(f)
+                data = json.load(f)
+
+    if _is_excel_file:
+        data = []
+        if hasattr(func, SHEET_NAME):
+            sheet_name = getattr(func,SHEET_NAME)
+            excel_object = xlrd.open_workbook(data_file_path)
+            sheet_object = excel_object.sheet_by_name(sheet_name)
+            rows = sheet_object.nrows
+            cols = sheet_object.ncols
+            keys = sheet_object.row_values(0)
+            for i in range(1, rows):
+                values = sheet_object.row_values(i)
+                data.append(dict(zip(keys, values)))
 
     _add_tests_from_data(cls, name, func, data)
 
@@ -375,6 +426,7 @@ def ddt(arg=None, **kwargs):
 
     def wrapper(cls):
         for name, func in list(cls.__dict__.items()):
+            # print("ddt函数中-cls.__dict__",cls.__dict__)
             if hasattr(func, DATA_ATTR):
                 index_len = getattr(func, INDEX_LEN)
                 for i, v in enumerate(getattr(func, DATA_ATTR)):
@@ -409,6 +461,10 @@ def ddt(arg=None, **kwargs):
                 delattr(cls, name)
             elif hasattr(func, FILE_ATTR):
                 file_attr = getattr(func, FILE_ATTR)
+                process_file_data(cls, name, func, file_attr)
+                delattr(cls, name)
+            elif hasattr(func, EXCEL_ATTR):
+                file_attr = getattr(func, EXCEL_ATTR)
                 process_file_data(cls, name, func, file_attr)
                 delattr(cls, name)
         return cls
